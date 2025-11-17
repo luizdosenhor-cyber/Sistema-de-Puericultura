@@ -80,22 +80,49 @@ const createDemoData = (): AppState => {
     };
 };
 
+const writeStateToLocalStorage = (state: AppState): boolean => {
+    try {
+        localStorage.setItem('puericulturaAppState', JSON.stringify(state));
+        return true;
+    } catch (error) {
+        console.error("Error writing to localStorage", error);
+        return false;
+    }
+};
+
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [state, setState] = useState<AppState>(createDemoData());
+  const [state, setState] = useState<AppState>(() => {
+    try {
+        const savedStateJSON = localStorage.getItem('puericulturaAppState');
+        if (savedStateJSON) {
+            return JSON.parse(savedStateJSON);
+        }
+    } catch (error) {
+        console.error("Failed to load state from localStorage", error);
+    }
+    const demoData = createDemoData();
+    demoData.lastUpdated = new Date().toISOString();
+    writeStateToLocalStorage(demoData);
+    return demoData;
+  });
+  const [isDirty, setIsDirty] = useState(false);
 
   const logAction = (message: string) => {
     setState(prevState => ({
       ...prevState,
       logs: [{ id: Date.now().toString(), timestamp: new Date().toISOString(), message }, ...prevState.logs],
     }));
+    setIsDirty(true);
   };
 
   const selectChild = (id: string | null) => {
     setState(prevState => ({ ...prevState, selectedChildId: id }));
     if(id) {
         const child = state.children.find(c => c.id === id);
-        logAction(`Visualizando detalhes de "${child?.name}".`);
+        if (child) {
+            logAction(`Visualizando detalhes de "${child.name}".`);
+        }
     }
   };
 
@@ -109,6 +136,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       ...prevState,
       children: [...prevState.children, newChild],
     }));
+    setIsDirty(true);
     logAction(`Criança "${newChild.name}" foi cadastrada.`);
   };
 
@@ -119,6 +147,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         child.id === updatedChild.id ? updatedChild : child
       ),
     }));
+    setIsDirty(true);
     logAction(`Dados da criança "${updatedChild.name}" foram atualizados.`);
   };
 
@@ -130,6 +159,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             children: prevState.children.filter(child => child.id !== id),
             selectedChildId: prevState.selectedChildId === id ? null : prevState.selectedChildId,
         }));
+        setIsDirty(true);
         logAction(`Cadastro da criança "${childToDelete.name}" foi removido.`);
     }
   };
@@ -150,7 +180,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       });
       return { ...prevState, children };
     });
-     logAction(`Consulta de "${updatedConsultation.milestone}" para "${child.name}" foi atualizada para o status "${updatedConsultation.status}".`);
+    setIsDirty(true);
+    logAction(`Consulta de "${updatedConsultation.milestone}" para "${child.name}" foi atualizada para o status "${updatedConsultation.status}".`);
   };
 
   const addAcs = (acsData: Omit<ACS, 'id'>) => {
@@ -159,6 +190,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         ...prevState,
         healthAgents: [...prevState.healthAgents, newAcs]
     }));
+    setIsDirty(true);
     logAction(`Agente de Saúde "${newAcs.name}" foi cadastrado.`);
   };
 
@@ -167,6 +199,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         ...prevState,
         healthAgents: prevState.healthAgents.map(a => a.id === updatedAcs.id ? updatedAcs : a),
     }));
+    setIsDirty(true);
     logAction(`Dados do Agente de Saúde "${updatedAcs.name}" foram atualizados.`);
   };
 
@@ -178,15 +211,40 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             healthAgents: prevState.healthAgents.filter(a => a.id !== id),
             children: prevState.children.map(c => c.acsId === id ? { ...c, acsId: undefined } : c)
         }));
+        setIsDirty(true);
         logAction(`Agente de Saúde "${acsToDelete.name}" foi removido e desvinculado das crianças.`);
     }
   };
 
+  const saveState = async (): Promise<boolean> => {
+    const timestamp = new Date().toISOString();
+    const stateToSave: AppState = {
+        ...state,
+        logs: [{ id: Date.now().toString(), timestamp, message: 'Dados consolidados e salvos com sucesso.' }, ...state.logs],
+        lastUpdated: timestamp,
+    };
+
+    if (writeStateToLocalStorage(stateToSave)) {
+        setState(stateToSave);
+        setIsDirty(false);
+        return true;
+    }
+    return false;
+  };
+
   const importState = (newState: AppState) => {
-    // Basic validation
     if (newState && Array.isArray(newState.children) && Array.isArray(newState.healthAgents) && Array.isArray(newState.logs)) {
-        setState(newState);
-        logAction('Banco de dados importado com sucesso a partir de arquivo.');
+        const stateToImport: AppState = {
+            ...newState,
+            lastUpdated: new Date().toISOString(),
+        };
+        const message = 'Banco de dados importado com sucesso a partir de arquivo.';
+        stateToImport.logs = [{ id: Date.now().toString(), timestamp: stateToImport.lastUpdated, message }, ...stateToImport.logs];
+
+        if (writeStateToLocalStorage(stateToImport)) {
+            setState(stateToImport);
+            setIsDirty(false);
+        }
     } else {
         logAction('Falha na importação: o arquivo é inválido ou está corrompido.');
         alert('O arquivo selecionado não é um backup válido do sistema.');
@@ -194,13 +252,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const resetState = () => {
-    setState(defaultState);
-    logAction('Banco de dados foi formatado. Todos os dados foram removidos.');
+    const timestamp = new Date().toISOString();
+    const freshState: AppState = {
+        ...defaultState,
+        logs: [{ id: Date.now().toString(), timestamp, message: 'Banco de dados foi formatado. Todos os dados foram removidos.' }],
+        lastUpdated: timestamp,
+    };
+    if (writeStateToLocalStorage(freshState)) {
+        setState(freshState);
+        setIsDirty(false);
+    }
   };
 
 
   return (
-    <AppContext.Provider value={{ state, selectChild, addChild, updateChild, deleteChild, addAcs, updateAcs, deleteAcs, updateConsultation, logAction, importState, resetState }}>
+    <AppContext.Provider value={{ state, isDirty, saveState, selectChild, addChild, updateChild, deleteChild, addAcs, updateAcs, deleteAcs, updateConsultation, logAction, importState, resetState }}>
       {children}
     </AppContext.Provider>
   );

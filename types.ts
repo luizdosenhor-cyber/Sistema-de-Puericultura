@@ -57,10 +57,12 @@ export type AppState = {
   healthAgents: ACS[];
   logs: LogEntry[];
   selectedChildId: string | null;
+  lastUpdated?: string;
 };
 
 export type AppContextType = {
   state: AppState;
+  isDirty: boolean;
   selectChild: (id: string | null) => void;
   addChild: (child: Omit<Child, 'id' | 'consultations'>) => void;
   updateChild: (child: Child) => void;
@@ -72,4 +74,5 @@ export type AppContextType = {
   logAction: (message: string) => void;
   importState: (newState: AppState) => void;
   resetState: () => void;
+  saveState: () => Promise<boolean>;
 };
