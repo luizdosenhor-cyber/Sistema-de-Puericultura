@@ -1,0 +1,5 @@
+{
+  "name": "Sistema de Gerenciamento de Puericultura",
+  "description": "Um sistema completo para profissionais de saúde gerenciarem o acompanhamento do desenvolvimento infantil, com cadastro de pacientes e agentes, agendamento automático, agenda consolidada, registro de consultas, visualização de dados, logs de auditoria e comunicação humanizada por IA.",
+  "requestFramePermissions": []
+}
